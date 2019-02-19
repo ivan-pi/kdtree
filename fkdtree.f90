@@ -1,6 +1,6 @@
 module fkdtree
 
-    use iso_c_binding
+    use iso_c_binding, only: c_int, c_float, c_double, c_ptr, c_funptr
     implicit none
     public
 
@@ -14,7 +14,7 @@ module fkdtree
         integer(c_int) :: dim
         type(c_ptr) :: root
         type(c_ptr) :: rect
-        type(c_funptr) :: destr
+        type(c_funptr) :: destr ! subroutine with type(c_ptr) argument
     end type
 
     ! struct kdres {
@@ -71,13 +71,13 @@ module fkdtree
         integer(c_int) function kd_insert(tree,pos,data) bind(c,name="kd_insert")
             import c_int, c_double, c_ptr, kdtree
             type(kdtree) :: tree
-            real(c_double), intent(in) :: pos
+            real(c_double), intent(in) :: pos(*)
             type(c_ptr), value :: data
         end function
         integer(c_int) function kd_insertf(tree,pos,data) bind(c,name="kd_insertf")
             import c_int, c_float, c_ptr, kdtree
             type(kdtree) :: tree
-            real(c_float), intent(in) :: pos
+            real(c_float), intent(in) :: pos(*)
             type(c_ptr), value :: data
         end function
         integer(c_int) function kd_insert3(tree,x,y,z,data) bind(c,name="kd_insert3")
@@ -104,12 +104,12 @@ module fkdtree
         type(c_ptr) function kd_nearest(tree,pos) bind(c,name="kd_nearest")
             import c_double, c_ptr, kdtree
             type(kdtree) :: tree
-            real(c_double), intent(in) :: pos
+            real(c_double), intent(in) :: pos(*)
         end function
         type(c_ptr) function kd_nearestf(tree,pos) bind(c,name="kd_nearestf")
             import c_float, c_ptr, kdtree
             type(kdtree) :: tree
-            real(c_float), intent(in) :: pos
+            real(c_float), intent(in) :: pos(*)
         end function
         type(c_ptr) function kd_nearest3(tree,x,y,z) bind(c,name="kd_nearest3")
             import c_double, c_ptr, kdtree
@@ -138,13 +138,13 @@ module fkdtree
         type(c_ptr) function kd_nearest_range(tree,pos,range) bind(c,name="kd_nearest_range")
             import c_double, c_ptr, kdtree
             type(kdtree) :: tree
-            real(c_double), intent(in) :: pos
+            real(c_double), intent(in) :: pos(*)
             real(c_double), value :: range
         end function
         type(c_ptr) function kd_nearest_rangef(tree,pos,range) bind(c,name="kd_nearest_rangef")
             import c_float, c_ptr, kdtree
             type(kdtree) :: tree
-            real(c_float), intent(in) :: pos
+            real(c_float), intent(in) :: pos(*)
             real(c_float), value :: range
         end function
         type(c_ptr) function kd_nearest_range3(tree,x,y,z,range) bind(c,name="kd_nearest_range3")
@@ -167,6 +167,10 @@ module fkdtree
             import kdres
             type(kdres) :: set
         end subroutine
+        ! subroutine kd_res_free(set) bind(c,name="kd_res_free")
+        !     import c_ptr
+        !     type(c_ptr), value :: set
+        ! end subroutine
 
         ! returns the size of the result set (in elements)
         ! int kd_res_size(struct kdres *set);
@@ -208,12 +212,12 @@ module fkdtree
         type(c_ptr) function kd_res_item(set,pos) bind(c,name="kd_res_item")
             import c_double,c_ptr,kdres
             type(kdres) :: set
-            real(c_double) :: pos
+            real(c_double) :: pos(*)
         end function
         type(c_ptr) function kd_res_itemf(set,pos) bind(c,name="kd_res_itemf")
             import c_float,c_ptr,kdres
             type(kdres) :: set
-            real(c_float) :: pos
+            real(c_float) :: pos(*)
         end function
         type(c_ptr) function kd_res_item3(set,x,y,z) bind(c,name="kd_res_item3")
             import c_double,c_ptr,kdres
@@ -237,92 +241,80 @@ module fkdtree
 
 end module
 
-program main
+module kdtree_oo
 
-    use iso_c_binding, only: c_int, c_double, c_ptr
+    use iso_c_binding
     use fkdtree
     implicit none
 
-    integer :: i, ierr, vcount = 10
-    type(c_ptr) :: kd_p = c_null_ptr
-    type(c_ptr) :: set_p = c_null_ptr
+    type, public :: kdtree_type
+        private
+        integer(c_int) :: dim = 0
+        type(c_ptr) :: kd_c = c_null_ptr
+        type(kdtree), pointer :: kd => null()
+    contains
+        procedure :: clear
+        procedure :: insert
+        final :: free_kdtree_type
+    end type
 
-    type(kdtree), pointer :: kd
-    type(kdres), pointer :: set
-
-    real(c_double) :: xyz(3), start, end
-    character(len=32) :: cmd
-
-    if (command_argument_count() > 0) then
-        call get_command_argument(1,cmd)
-        if (is_digit(cmd)) read(cmd,*) vcount
-    end if
-
-    write(*,"(a,i0,a)") "inserting ", vcount, " random vectors"
-
-    kd_p = kd_create(3)
-    call c_f_pointer(kd_p,kd)
-
-    call cpu_time(start)
-    do i = 1, vcount
-        call random_number(xyz)
-        xyz = xyz*200._c_double - 100._c_double
-
-        ierr = kd_insert3(kd,xyz(1),xyz(2),xyz(3),c_null_ptr)
-    end do
-    call cpu_time(end)
-    write(*,"(f0.3,a)") end-start, " sec"
-
-    call cpu_time(start)
-    set_p = kd_nearest_range3(kd,0._c_double,0._c_double,0._c_double,40._c_double)
-    call c_f_pointer(set_p,set)
-    call cpu_time(end)
-
-    write(*,"(a,i0,a,f0.5,a)") "range query returned ", kd_res_size(set), " items in ", end - start, " sec"
-
-    call kd_res_free(set)
-    call kd_free(kd)
+    interface kdtree_type
+        module procedure new_kdtree
+    end interface
 
 contains
 
-    logical function is_digit(string)
-        character(len=*), intent(in) :: string
-        integer(c_int) :: d, e
-        read(string,*,iostat=e) d
-        is_digit = e == 0
+    type(kdtree_type) function new_kdtree(dim) result(self)
+        integer(c_int), intent(in) :: dim
+
+        self%dim = dim
+        self%kd_c = kd_create(self%dim)
+        call c_f_pointer(self%kd_c,self%kd)
     end function
 
-end program
+    subroutine free_kdtree_type(self)
+        type(kdtree_type) :: self
+        print *, "finalizing"
+        self%dim = 0
+        call kd_free(self%kd)
+        self%kd => null()
+        self%kd_c = c_null_ptr
+    end subroutine
 
-    ! int i, vcount = 10;
-    ! void *kd, *set;
-    ! unsigned int msec, start;
+    subroutine clear(self)
+        class(kdtree_type), intent(inout) :: self
+        call kd_clear(self%kd)
+    end subroutine
 
-    ! if(argc > 1 && isdigit(argv[1][0])) {
-    !     vcount = atoi(argv[1]);
-    ! }
-    ! printf("inserting %d random vectors... ", vcount);
-    ! fflush(stdout);
+    subroutine insert(self,pos,data,ierr)
+        class(kdtree_type), intent(inout) :: self
+        real(c_double), intent(in) :: pos(self%dim)
+        type(c_ptr), value, optional :: data
+        integer(c_int), intent(out), optional :: ierr
+        integer(c_int) :: ret
 
-    ! kd = kd_create(3);
+        ret =  kd_insert(self%kd,pos,data)
+        if (present(ierr)) ierr = ret
 
-    ! start = get_msec();
-    ! for(i=0; i<vcount; i++) {
-    !     float x, y, z;
-    !     x = ((float)rand() / RAND_MAX) * 200.0 - 100.0;
-    !     y = ((float)rand() / RAND_MAX) * 200.0 - 100.0;
-    !     z = ((float)rand() / RAND_MAX) * 200.0 - 100.0;
+    end subroutine
+end module
 
-    !     assert(kd_insert3(kd, x, y, z, 0) == 0);
-    ! }
-    ! msec = get_msec() - start;
-    ! printf("%.3f sec\n", (float)msec / 1000.0);
+! program main
 
-    ! start = get_msec();
-    ! set = kd_nearest_range3(kd, 0, 0, 0, 40);
-    ! msec = get_msec() - start;
-    ! printf("range query returned %d items in %.5f sec\n", kd_res_size(set), (float)msec / 1000.0);
-    ! kd_res_free(set);
+!     use iso_c_binding, only: c_double
+!     use kdtree_oo
 
-    ! kd_free(kd);
-    ! return 0;
+!     type(kdtree_type) :: kd
+!     integer(c_int) :: ierr
+
+!     kd = kdtree_type(3)
+
+!     call kd%insert(pos=[1.0_c_double,2.0_c_double,3.0_c_double],ierr=ierr)
+!     print *, ierr
+
+!     call kd%clear()
+
+! contains
+
+
+! end program
