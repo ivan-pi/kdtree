@@ -255,8 +255,16 @@ module kdtree_oo
     contains
         procedure :: clear
         procedure :: insert
+        procedure :: set_data_destructor
         final :: free_kdtree_type
     end type
+
+    abstract interface
+        subroutine destr_interface(data)
+            import c_ptr
+            type(c_ptr), value :: data
+        end subroutine
+    end interface
 
     interface kdtree_type
         module procedure new_kdtree
@@ -284,6 +292,16 @@ contains
     subroutine clear(self)
         class(kdtree_type), intent(inout) :: self
         call kd_clear(self%kd)
+    end subroutine
+
+    subroutine set_data_destructor(self,destr)
+        class(kdtree_type) :: self
+        procedure(destr_interface) :: destr
+
+        type(c_funptr) :: cdestr
+
+        cdestr = c_funloc(destr)
+        call kd_data_destructor(self%kd,cdestr)
     end subroutine
 
     subroutine insert(self,pos,data,ierr)
