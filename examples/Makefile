@@ -4,12 +4,23 @@ CC = gcc
 CFLAGS = -std=c89 -pedantic -Wall -g -I..
 LDFLAGS = $(kdlib) -lm
 
-.PHONY: all
-all: test test2
+FC = gfortran
+FFLAGS = -pedantic -Wall -I..
 
-test: test.c $(LDFLAGS)
+% : %.f90
+	$(FC) $(FFLAGS) $^ -o $@
+
+#.f90:
+#	$(FC) $(FFLAGS) -o $@ $<
+
+.PHONY: all
+all: test test2 ftest ftest2
+
+test: test.c $(LDFLAGS) 
 test2: test2.c $(LDFLAGS)
+ftest: ftest.f90 $(LDFLAGS)
+ftest2: ftest2.f90 $(LDFLAGS)
 
 .PHONY: clean
 clean:
-	rm -f test test2
+	rm -f test test2 ftest ftest2
